@@ -382,6 +382,54 @@
             }
 
             mysqli_commit($conn);
+            
+            // Send email notifications after successful order placement
+            try {
+                // Include email utilities
+                include_once('email_utils.php');
+                
+                // Get customer details
+                $customerDetails = getCustomerDetailsForEmail($conn, $customerId);
+                $customerEmail = $updateValues['contact_email'] ?: ($customerDetails['email'] ?? '');
+                $customerName = $updateValues['shipping_full_name'] ?: ($customerDetails['name'] ?? 'Customer');
+                
+                // Get order items for email
+                $orderItems = getOrderItemsForEmail($conn, $orderId);
+                
+                // Prepare order details for email
+                $emailOrderDetails = [
+                    'order_id' => $orderId,
+                    'total' => $finalAmount,
+                    'discount' => $orderDiscount,
+                    'voucher_code' => $voucherCode,
+                    'payment_method' => $updateValues['payment_method'],
+                    'created_at' => date('Y-m-d H:i:s'),
+                    'shipping_full_name' => $updateValues['shipping_full_name'],
+                    'shipping_street' => $updateValues['shipping_street'],
+                    'shipping_city' => $updateValues['shipping_city'],
+                    'shipping_province' => $updateValues['shipping_province'],
+                    'shipping_postal_code' => $updateValues['shipping_postal_code'],
+                    'shipping_phone' => $updateValues['shipping_phone'],
+                    'contact_email' => $customerEmail,
+                    'customer_name' => $customerName,
+                    'items' => $orderItems
+                ];
+                
+                // Send customer confirmation email
+                if ($customerEmail) {
+                    $emailSent = sendOrderConfirmationEmail($customerEmail, $customerName, $emailOrderDetails);
+                    error_log("Customer email notification for order #$orderId: " . ($emailSent ? 'SENT' : 'FAILED'));
+                }
+                
+                // Send admin notification email
+                $adminEmailSent = sendAdminOrderNotification($emailOrderDetails);
+                error_log("Admin email notification for order #$orderId: " . ($adminEmailSent ? 'SENT' : 'FAILED'));
+                
+            } catch (Exception $emailError) {
+                // Don't fail the order if email fails, just log it
+                error_log("Email notification error for order #$orderId: " . $emailError->getMessage());
+            }
+            
             clearCart();
             unset($_SESSION['voucher_code']);
             return ['success' => true, 'order_id' => $orderId, 'total' => $finalAmount, 'discount' => $orderDiscount, 'voucher' => $voucherCode, 'label' => $voucherLabel];
