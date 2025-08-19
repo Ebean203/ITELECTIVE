@@ -911,6 +911,55 @@
                     min-width: 70px;
                 }
             }
+            
+            /* Payment Method Styles */
+            #payment_method {
+                font-size: 1rem;
+            }
+            
+            #payment_method option {
+                padding: 10px;
+            }
+            
+            .payment-form-card {
+                border: 1px solid #e0e0e0;
+                border-radius: 12px;
+                transition: all 0.3s ease;
+            }
+            
+            .payment-form-card:hover {
+                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            }
+            
+            #paymentInstructions .alert {
+                border-radius: 10px;
+                border-left: 4px solid #17a2b8;
+            }
+            
+            #creditCardForm input,
+            #eWalletForm input {
+                border-radius: 8px;
+                border: 1px solid #ddd;
+                transition: border-color 0.3s ease;
+            }
+            
+            #creditCardForm input:focus,
+            #eWalletForm input:focus {
+                border-color: #667eea;
+                box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+            }
+            
+            /* Format card number input */
+            #card_number {
+                font-family: 'Courier New', monospace;
+                letter-spacing: 1px;
+            }
+            
+            /* Payment method icons */
+            .payment-icon {
+                font-size: 1.2rem;
+                margin-right: 8px;
+            }
         </style>
     </head>
     <body>
@@ -1587,9 +1636,66 @@
                 });
             }
 
+            // Payment method validation
+            function validatePaymentMethod(paymentMethod) {
+                switch (paymentMethod) {
+                    case 'Credit Card':
+                        const cardNumber = document.getElementById('card_number').value.replace(/\s/g, '');
+                        const cardExpiry = document.getElementById('card_expiry').value;
+                        const cardCvv = document.getElementById('card_cvv').value;
+                        const cardHolder = document.getElementById('card_holder_name').value.trim();
+                        
+                        if (cardNumber.length < 13 || cardNumber.length > 19) {
+                            alert('Please enter a valid card number');
+                            return false;
+                        }
+                        if (!/^\d{2}\/\d{2}$/.test(cardExpiry)) {
+                            alert('Please enter a valid expiry date (MM/YY)');
+                            return false;
+                        }
+                        if (cardCvv.length < 3 || cardCvv.length > 4) {
+                            alert('Please enter a valid CVV');
+                            return false;
+                        }
+                        if (cardHolder.length < 2) {
+                            alert('Please enter the cardholder name');
+                            return false;
+                        }
+                        break;
+                        
+                    case 'GCash':
+                    case 'Maya':
+                        const mobile = document.getElementById('ewallet_mobile').value;
+                        if (!/^09\d{9}$/.test(mobile)) {
+                            alert('Please enter a valid Philippine mobile number (09XXXXXXXXX)');
+                            return false;
+                        }
+                        break;
+                        
+                    case 'Cash on Delivery':
+                    case 'Bank Transfer':
+                    case 'Online Banking':
+                    case 'PayPal':
+                        // No additional validation needed
+                        break;
+                        
+                    default:
+                        alert('Please select a payment method');
+                        return false;
+                }
+                return true;
+            }
+
             function placeOrderWithDetails(forcedMethod = null, paypalOrderId = null) {
                 const form = document.getElementById('checkoutForm');
                 if (!form) return;
+                
+                // Validate payment method specific requirements
+                const paymentMethod = forcedMethod || document.getElementById('payment_method').value;
+                if (!validatePaymentMethod(paymentMethod)) {
+                    return;
+                }
+                
                 // Ensure required fields are enforced depending on billing toggle
                 const billingSameCheckbox = document.getElementById('billing_same_as_shipping');
                 const billingSame = billingSameCheckbox && billingSameCheckbox.checked;
@@ -1607,6 +1713,19 @@
                     const el = document.getElementById(id);
                     if (el) data.append(id, el.value || '');
                 });
+                
+                // Add payment method specific data
+                if (paymentMethod === 'Credit Card') {
+                    const cardFields = ['card_number', 'card_expiry', 'card_cvv', 'card_holder_name'];
+                    cardFields.forEach(field => {
+                        const el = document.getElementById(field);
+                        if (el) data.append(field, el.value || '');
+                    });
+                } else if (paymentMethod === 'GCash' || paymentMethod === 'Maya') {
+                    const el = document.getElementById('ewallet_mobile');
+                    if (el) data.append('ewallet_mobile', el.value || '');
+                }
+                
                 data.append('billing_same_as_shipping', billingSame ? '1' : '0');
                 if (forcedMethod) data.set('payment_method', forcedMethod);
                 if (paypalOrderId) data.append('paypal_order_id', paypalOrderId);
@@ -1626,7 +1745,38 @@
                         const modal = bootstrap.Modal.getOrCreateInstance(checkoutEl);
                         modal.hide();
                     }
-                    alert(`Order #${data.order_id} placed successfully! Total: ₱${Number(data.total).toFixed(2)}`);
+                    
+                    // Show payment-specific success message
+                    const orderPaymentMethod = forcedMethod || document.getElementById('payment_method').value;
+                    let successMessage = `Order #${data.order_id} placed successfully! Total: ₱${Number(data.total).toFixed(2)}\n\n`;
+                    
+                    switch (orderPaymentMethod) {
+                        case 'Cash on Delivery':
+                            successMessage += 'Payment Method: Cash on Delivery\nPrepare exact amount for delivery. Additional COD fee applies.';
+                            break;
+                        case 'Credit Card':
+                            successMessage += 'Payment Method: Credit Card\nYour card will be charged upon order confirmation.';
+                            break;
+                        case 'GCash':
+                            successMessage += 'Payment Method: GCash\nYou will receive a payment request via SMS. Please complete payment within 15 minutes.';
+                            break;
+                        case 'Maya':
+                            successMessage += 'Payment Method: Maya (PayMaya)\nYou will receive a payment request notification. Please complete payment within 15 minutes.';
+                            break;
+                        case 'Bank Transfer':
+                            successMessage += 'Payment Method: Bank Transfer\nPlease transfer the exact amount to our bank account and send proof of payment.';
+                            break;
+                        case 'Online Banking':
+                            successMessage += 'Payment Method: Online Banking\nComplete your payment through your bank\'s online portal.';
+                            break;
+                        case 'PayPal':
+                            successMessage += 'Payment Method: PayPal\nPayment completed successfully through PayPal.';
+                            break;
+                        default:
+                            successMessage += `Payment Method: ${orderPaymentMethod}`;
+                    }
+                    
+                    alert(successMessage);
                 })
                 .catch(() => alert('Failed to place order'));
             }
@@ -1710,26 +1860,114 @@
                 }
             }
 
-            function maybeRenderPayPal() {
+            function handlePaymentMethodChange() {
                 const methodSelect = document.getElementById('payment_method');
-                const container = document.getElementById('paypalButtons');
-                if (!methodSelect || !container) return;
-                container.innerHTML = '';
-                if (methodSelect.value === 'PayPal' && checkoutSummary.total > 0) {
-                    paypal.Buttons({
-                        createOrder: function(data, actions) {
-                            return actions.order.create({
-                                purchase_units: [{ amount: { value: Number(checkoutSummary.total).toFixed(2) } }]
-                            });
-                        },
-                        onApprove: function(data, actions) {
-                            return actions.order.capture().then(function(details) {
-                                placeOrderWithDetails('PayPal', details.id);
-                            });
-                        },
-                        onError: function(err) { alert('PayPal error: ' + err); }
-                    }).render('#paypalButtons');
+                const paypalContainer = document.getElementById('paypalButtons');
+                const creditCardForm = document.getElementById('creditCardForm');
+                const eWalletForm = document.getElementById('eWalletForm');
+                const bankTransferForm = document.getElementById('bankTransferForm');
+                const paymentInstructions = document.getElementById('paymentInstructions');
+                const paymentInstructionText = document.getElementById('paymentInstructionText');
+                const eWalletTitle = document.getElementById('eWalletTitle');
+                
+                if (!methodSelect) return;
+                
+                // Hide all payment forms first
+                if (paypalContainer) paypalContainer.style.display = 'none';
+                if (creditCardForm) creditCardForm.style.display = 'none';
+                if (eWalletForm) eWalletForm.style.display = 'none';
+                if (bankTransferForm) bankTransferForm.style.display = 'none';
+                if (paymentInstructions) paymentInstructions.style.display = 'none';
+                
+                const selectedMethod = methodSelect.value;
+                
+                switch (selectedMethod) {
+                    case 'Cash on Delivery':
+                        paymentInstructions.style.display = 'block';
+                        paymentInstructionText.innerHTML = `
+                            <strong>Cash on Delivery (COD)</strong><br>
+                            • Pay cash when your order is delivered<br>
+                            • Additional COD fee: ₱50<br>
+                            • Please prepare exact amount if possible<br>
+                            • Available for Metro Manila and nearby provinces only
+                        `;
+                        break;
+                        
+                    case 'PayPal':
+                        if (paypalContainer && checkoutSummary.total > 0) {
+                            paypalContainer.style.display = 'block';
+                            paypalContainer.innerHTML = '';
+                            paypal.Buttons({
+                                createOrder: function(data, actions) {
+                                    return actions.order.create({
+                                        purchase_units: [{ amount: { value: Number(checkoutSummary.total).toFixed(2) } }]
+                                    });
+                                },
+                                onApprove: function(data, actions) {
+                                    return actions.order.capture().then(function(details) {
+                                        placeOrderWithDetails('PayPal', details.id);
+                                    });
+                                },
+                                onError: function(err) { alert('PayPal error: ' + err); }
+                            }).render('#paypalButtons');
+                        }
+                        break;
+                        
+                    case 'Credit Card':
+                        creditCardForm.style.display = 'block';
+                        paymentInstructions.style.display = 'block';
+                        paymentInstructionText.innerHTML = `
+                            <strong>Credit/Debit Card</strong><br>
+                            • We accept Visa, Mastercard, and local cards<br>
+                            • Your payment is secured with SSL encryption<br>
+                            • Please ensure your card is enabled for online transactions
+                        `;
+                        break;
+                        
+                    case 'GCash':
+                        eWalletForm.style.display = 'block';
+                        eWalletTitle.textContent = 'GCash Payment';
+                        paymentInstructions.style.display = 'block';
+                        paymentInstructionText.innerHTML = `
+                            <strong>GCash Payment</strong><br>
+                            • Make sure you have sufficient GCash balance<br>
+                            • You'll receive a payment request via SMS<br>
+                            • Complete payment within 15 minutes
+                        `;
+                        break;
+                        
+                    case 'Maya':
+                        eWalletForm.style.display = 'block';
+                        eWalletTitle.textContent = 'Maya (PayMaya) Payment';
+                        paymentInstructions.style.display = 'block';
+                        paymentInstructionText.innerHTML = `
+                            <strong>Maya (PayMaya) Payment</strong><br>
+                            • Ensure your Maya wallet has sufficient balance<br>
+                            • You'll receive a payment request notification<br>
+                            • Complete payment within 15 minutes
+                        `;
+                        break;
+                        
+                    case 'Bank Transfer':
+                        bankTransferForm.style.display = 'block';
+                        break;
+                        
+                    case 'Online Banking':
+                        paymentInstructions.style.display = 'block';
+                        paymentInstructionText.innerHTML = `
+                            <strong>Online Banking</strong><br>
+                            • Available for BPI, BDO, Metrobank, UnionBank, and more<br>
+                            • You'll be redirected to your bank's website<br>
+                            • Make sure your online banking is activated<br>
+                            • Keep your transaction reference number
+                        `;
+                        break;
                 }
+            }
+            
+            // For backward compatibility
+            function maybeRenderPayPal() {
+                handlePaymentMethodChange();
             }
 
             function applyVoucher() {
@@ -1759,6 +1997,63 @@
                 .then(() => loadCheckoutSummary())
                 .catch(() => {});
             }
+            
+            // Card formatting functions
+            function formatCardNumber(value) {
+                return value.replace(/\s/g, '').replace(/(\d{4})/g, '$1 ').trim();
+            }
+            
+            function formatExpiryDate(value) {
+                return value.replace(/\D/g, '').replace(/(\d{2})(\d)/, '$1/$2');
+            }
+            
+            // Add event listeners for card formatting
+            document.addEventListener('DOMContentLoaded', function() {
+                const cardNumberInput = document.getElementById('card_number');
+                const cardExpiryInput = document.getElementById('card_expiry');
+                const cardCvvInput = document.getElementById('card_cvv');
+                const ewalletMobileInput = document.getElementById('ewallet_mobile');
+                
+                if (cardNumberInput) {
+                    cardNumberInput.addEventListener('input', function(e) {
+                        const cursorPos = e.target.selectionStart;
+                        const oldValue = e.target.value;
+                        const newValue = formatCardNumber(e.target.value.replace(/\s/g, ''));
+                        e.target.value = newValue;
+                        
+                        // Maintain cursor position
+                        if (newValue.length > oldValue.length) {
+                            e.target.setSelectionRange(cursorPos + 1, cursorPos + 1);
+                        }
+                    });
+                }
+                
+                if (cardExpiryInput) {
+                    cardExpiryInput.addEventListener('input', function(e) {
+                        e.target.value = formatExpiryDate(e.target.value);
+                    });
+                }
+                
+                if (cardCvvInput) {
+                    cardCvvInput.addEventListener('input', function(e) {
+                        e.target.value = e.target.value.replace(/\D/g, '');
+                    });
+                }
+                
+                if (ewalletMobileInput) {
+                    ewalletMobileInput.addEventListener('input', function(e) {
+                        // Format mobile number (Philippine format)
+                        let value = e.target.value.replace(/\D/g, '');
+                        if (value.startsWith('63')) {
+                            value = '0' + value.substring(2);
+                        }
+                        if (value.length > 11) {
+                            value = value.substring(0, 11);
+                        }
+                        e.target.value = value;
+                    });
+                }
+            });
         </script>
         
         <?php if ($isCustomer): ?>
@@ -1810,12 +2105,87 @@
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Payment Method</label>
-                                <select class="form-select" id="payment_method" required onchange="maybeRenderPayPal()">
-                                    <option value="" disabled selected>Select...</option>
-                                    <option value="PayPal">PayPal</option>
+                                <select class="form-select" id="payment_method" required onchange="handlePaymentMethodChange()">
+                                    <option value="" disabled selected>Select payment method...</option>
+                                    <option value="Cash on Delivery">💰 Cash on Delivery (COD)</option>
+                                    <option value="PayPal">💳 PayPal</option>
+                                    <option value="Credit Card">💳 Credit/Debit Card</option>
+                                    <option value="GCash">📱 GCash</option>
+                                    <option value="Maya">📱 Maya (PayMaya)</option>
+                                    <option value="Bank Transfer">🏦 Bank Transfer</option>
+                                    <option value="Online Banking">🌐 Online Banking</option>
                                 </select>
                             </div>
-                            <div id="paypalButtons" class="mb-3"></div>
+                            
+                            <!-- Payment Instructions Container -->
+                            <div id="paymentInstructions" class="mb-3" style="display: none;">
+                                <div class="alert alert-info">
+                                    <div id="paymentInstructionText"></div>
+                                </div>
+                            </div>
+                            
+                            <!-- PayPal Buttons -->
+                            <div id="paypalButtons" class="mb-3" style="display: none;"></div>
+                            
+                            <!-- Credit Card Form -->
+                            <div id="creditCardForm" class="mb-3" style="display: none;">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h6 class="card-title">Credit/Debit Card Details</h6>
+                                        <div class="row g-3">
+                                            <div class="col-12">
+                                                <label class="form-label">Card Number</label>
+                                                <input type="text" class="form-control" id="card_number" placeholder="1234 5678 9012 3456" maxlength="19">
+                                            </div>
+                                            <div class="col-6">
+                                                <label class="form-label">Expiry Date</label>
+                                                <input type="text" class="form-control" id="card_expiry" placeholder="MM/YY" maxlength="5">
+                                            </div>
+                                            <div class="col-6">
+                                                <label class="form-label">CVV</label>
+                                                <input type="text" class="form-control" id="card_cvv" placeholder="123" maxlength="4">
+                                            </div>
+                                            <div class="col-12">
+                                                <label class="form-label">Cardholder Name</label>
+                                                <input type="text" class="form-control" id="card_holder_name" placeholder="Name on card">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- E-Wallet Form -->
+                            <div id="eWalletForm" class="mb-3" style="display: none;">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h6 class="card-title" id="eWalletTitle">E-Wallet Details</h6>
+                                        <div class="mb-3">
+                                            <label class="form-label">Mobile Number</label>
+                                            <input type="text" class="form-control" id="ewallet_mobile" placeholder="09XXXXXXXXX">
+                                        </div>
+                                        <div class="alert alert-warning">
+                                            <small>You will receive a payment request on your mobile number after placing the order.</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Bank Transfer Form -->
+                            <div id="bankTransferForm" class="mb-3" style="display: none;">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h6 class="card-title">Bank Transfer Details</h6>
+                                        <div class="alert alert-info">
+                                            <strong>Our Bank Details:</strong><br>
+                                            Bank: BPI (Bank of the Philippine Islands)<br>
+                                            Account Name: Your Store Name<br>
+                                            Account Number: 1234-5678-90<br>
+                                            <br>
+                                            <small>Please transfer the exact amount and send proof of payment to our email.</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                             <h6 class="mt-3 mb-2">Shipping Address</h6>
                             <div class="mb-2"><input type="text" class="form-control" id="shipping_full_name" placeholder="Full name (recipient)" required></div>
                             <div class="mb-2"><input type="text" class="form-control" id="shipping_street" placeholder="Street address" required></div>
